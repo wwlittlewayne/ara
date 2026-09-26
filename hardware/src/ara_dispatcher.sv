@@ -667,11 +667,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   endcase
 
                   if (insn.vsetivli_type.func2 == 2'b11) begin // vsetivli
-                    csr_vl_d = vlen_t'(insn.vsetivli_type.uimm5);
+                    // Clamp to VLMAX: vl = min(AVL, VLMAX) (RVV 1.0 sec. 6.3)
+                    csr_vl_d = (int'(insn.vsetivli_type.uimm5) > vlmax) ? vlen_t'(vlmax) :
+                                                                         vlen_t'(insn.vsetivli_type.uimm5);
                   end else begin // vsetvl || vsetvli
                     if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd == '0) begin
-                      // Do not update the vector length
-                      csr_vl_d = csr_vl_q;
+                      // Do not update the vector length (clamped to the new VLMAX, as QEMU does,
+                      // so that a VLMAX-reducing vtype change cannot leave vl > VLMAX)
+                      csr_vl_d = (int'(csr_vl_q) > vlmax) ? vlen_t'(vlmax) : csr_vl_q;
                     end else if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd != '0) begin
                       // Set the vector length to vlmax
                       csr_vl_d = vlmax;
