@@ -182,9 +182,17 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   logic mask_operand_ready;
   logic mask_operand_gnt;
 
+  // VID runs in the MASKU without any ALU operand: the MASKU never handshakes
+  // the ALU->MASKU channel for it. Its (dummy) VALU result beat must therefore
+  // be retired locally; forwarding it would leave a stale beat in the channel,
+  // which the next mask-producing instruction (e.g., a compare) would consume
+  // as its first slice, skewing its result by one beat.
+  logic mask_operand_drop;
+  assign mask_operand_drop  = vinsn_commit_valid && (vinsn_commit.op == VID);
+
   assign mask_operand_valid = result_queue_q[result_queue_read_pnt_q].mask
                             & result_queue_valid_q[result_queue_read_pnt_q];
-  assign mask_operand_gnt = mask_operand_valid & mask_operand_ready;
+  assign mask_operand_gnt = mask_operand_valid & (mask_operand_ready | mask_operand_drop);
 
   spill_register #(
     .T(elen_t)
@@ -195,7 +203,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     .valid_o   (mask_operand_valid_o                          ),
     .ready_i   (mask_operand_ready_i                          ),
     .data_i    (result_queue_q[result_queue_read_pnt_q].wdata ),
-    .valid_i   (mask_operand_valid                            ),
+    .valid_i   (mask_operand_valid & ~mask_operand_drop       ),
     .ready_o   (mask_operand_ready                            )
   );
 
@@ -873,5 +881,24 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       alu_vxsat_q             <= alu_vxsat_d;
     end
   end
+
+
+`ifndef SYNTHESIS
+`ifdef MASKU_TRACE
+  // Debug-only: per-lane VALU issue trace (inputs/outputs of the same cycle)
+  always_ff @(posedge clk_i) if (rst_ni && valu_valid)
+    $display("%0t VALU lane=%0d id=%0d op=%0d sew=%0d vl=%0d icnt=%0d a=%016h b=%016h res=%016h mask=%0b wpnt=%0d",
+             $time, lane_id_i, vinsn_issue_q.id, vinsn_issue_q.op, vinsn_issue_q.vtype.vsew, vinsn_issue_q.vl,
+             issue_cnt_q, alu_operand_a, alu_operand_b, valu_result,
+             vinsn_issue_q.vfu == VFU_MaskUnit, result_queue_write_pnt_q);
+  always_ff @(posedge clk_i) if (rst_ni && mask_operand_gnt)
+    $display("%0t VALU2MASKU lane=%0d id=%0d data=%016h rpnt=%0d",
+             $time, lane_id_i, result_queue_q[result_queue_read_pnt_q].id,
+             result_queue_q[result_queue_read_pnt_q].wdata, result_queue_read_pnt_q);
+  always_ff @(posedge clk_i) if (rst_ni && alu_result_req_o && alu_result_gnt_i)
+    $display("%0t VALUW lane=%0d id=%0d addr=%0h data=%016h be=%0h",
+             $time, lane_id_i, alu_result_id_o, alu_result_addr_o, alu_result_wdata_o, alu_result_be_o);
+`endif
+`endif
 
 endmodule : valu
