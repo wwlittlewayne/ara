@@ -937,13 +937,16 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                 unique case (ara_req.emul)
                   LMUL_2: if ((insn.varith_type.rs1 & 5'b00001) != 5'b00000 ||
                         (insn.varith_type.rs2 & 5'b00001) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00001) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00001) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   LMUL_4: if ((insn.varith_type.rs1 & 5'b00011) != 5'b00000 ||
                         (insn.varith_type.rs2 & 5'b00011) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00011) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00011) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   LMUL_8: if ((insn.varith_type.rs1 & 5'b00111) != 5'b00000 ||
                         (insn.varith_type.rs2 & 5'b00111) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00111) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00111) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   default:;
                 endcase
 
@@ -1185,11 +1188,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                 // access.
                 unique case (ara_req.emul)
                   LMUL_2: if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00001) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00001) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   LMUL_4: if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00011) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00011) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   LMUL_8: if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00111) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00111) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   default:;
                 endcase
 
@@ -1424,11 +1430,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                 // access.
                 unique case (ara_req.emul)
                   LMUL_2: if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00001) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00001) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   LMUL_4: if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00011) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00011) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   LMUL_8: if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000 ||
-                        (insn.varith_type.rd & 5'b00111) != 5'b00000) illegal_insn = 1'b1;
+                        ((insn.varith_type.rd & 5'b00111) != 5'b00000 &&
+                         !(ara_req.op inside {[VMSEQ:VMSBC]}))) illegal_insn = 1'b1;
                   default:;
                 endcase
 
@@ -3705,9 +3714,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       end
     end
 
-    // Update the EEW
+    // Update the EEW. Mask results occupy exactly one register, regardless of
+    // the source LMUL. Do not relabel adjacent live registers as mask data.
+    // Keep ara_req.emul unchanged for source-group reshuffling and checks.
     if (ara_req_valid_d && ara_req.use_vd && ara_req_ready_i) begin
-      unique case (ara_req.emul)
+      unique case ((ara_req.op inside {[VMFEQ:VMSBC]}) ? LMUL_1 : ara_req.emul)
         LMUL_1: begin
           for (int i = 0; i < 1; i++) begin
             eew_d[ara_req.vd + i]       = ara_req.vtype.vsew;
