@@ -681,4 +681,33 @@ module ara import ara_pkg::*; #(
   if (VLEN != 2**$clog2(VLEN))
     $error("[ara] The vector length must be a power of two.");
 
+`ifndef SYNTHESIS
+`ifdef MASKU_TRACE
+  // Debug-only trace: PE requests, VRF writes from VLDU/MASKU, mask operands to lanes
+  logic   dbg_pe_req_valid_q;
+  vid_t   dbg_pe_req_id_q;
+  always_ff @(posedge clk_i) begin
+    dbg_pe_req_valid_q <= pe_req_valid;
+    dbg_pe_req_id_q    <= pe_req.id;
+    if (rst_ni) begin
+      if (pe_req_valid && (!dbg_pe_req_valid_q || (dbg_pe_req_id_q != pe_req.id)))
+        $display("%0t TRC PEREQ id=%0d op=%0d vl=%0d sew=%0d lmul=%0d vd=%0d vs1=%0d vs2=%0d vm=%0b eew_vs2=%0d eew_vmask=%0d scal=%0h hz_vm=%0h hz_vs1=%0h hz_vs2=%0h hz_vd=%0h",
+                 $time, pe_req.id, pe_req.op, pe_req.vl, pe_req.vtype.vsew, pe_req.vtype.vlmul, pe_req.vd,
+                 pe_req.vs1, pe_req.vs2, pe_req.vm, pe_req.eew_vs2, pe_req.eew_vmask, pe_req.scalar_op,
+                 pe_req.hazard_vm, pe_req.hazard_vs1, pe_req.hazard_vs2, pe_req.hazard_vd);
+      for (int l = 0; l < NrLanes; l++) begin
+        if (ldu_result_req[l] && ldu_result_gnt[l])
+          $display("%0t TRC LDUW lane=%0d id=%0d addr=%0h data=%016h be=%0h", $time, l,
+                   ldu_result_id[l], ldu_result_addr[l], ldu_result_wdata[l], ldu_result_be[l]);
+        if (masku_result_req[l] && masku_result_gnt[l])
+          $display("%0t TRC MSKW lane=%0d id=%0d addr=%0h data=%016h be=%0h", $time, l,
+                   masku_result_id[l], masku_result_addr[l], masku_result_wdata[l], masku_result_be[l]);
+        if (mask_valid[l] && mask_valid_lane && lane_mask_ready[l])
+          $display("%0t TRC MASKOP lane=%0d strb=%0h", $time, l, mask[l]);
+      end
+    end
+  end
+`endif
+`endif
+
 endmodule : ara

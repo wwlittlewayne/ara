@@ -107,6 +107,9 @@ vlog_args += -work $(library)
 # Bender
 # Defines
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
+ifeq ($(masku_trace), 1)
+  bender_defs += --define MASKU_TRACE=1
+endif
 bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder
@@ -209,13 +212,13 @@ $(veril_library)/V$(veril_top): $(config_file) Makefile ../Bender.yml $(shell fi
   --Mdir $(veril_library)                                                       \
   -Itb/dpi                                                                      \
   --compiler clang                                                              \
-  -CFLAGS "-DTOPLEVEL_NAME=$(veril_top)"                                        \
+  -CFLAGS "-I/home/wenwu/ara_fix/libelf/usr/include" -CFLAGS "-DTOPLEVEL_NAME=$(veril_top)"                                        \
   -CFLAGS "-DNR_LANES=$(nr_lanes)"                                              \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp       \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp \
   $(CLANG_CXXFLAGS)                                                             \
-  -LDFLAGS "-lelf"                                                              \
+  -LDFLAGS "-L/home/wenwu/ara_fix/libelf/usr/lib/x86_64-linux-gnu -Wl,-rpath,/home/wenwu/ara_fix/libelf/usr/lib/x86_64-linux-gnu -lelf"                                                              \
   $(CLANG_LDFLAGS)                                                              \
   --exe                                                                         \
   $(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp/*.cc            \

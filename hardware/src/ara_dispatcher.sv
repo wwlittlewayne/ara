@@ -3800,4 +3800,22 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     is_same_eew = same_eew_by_lmul[ara_req.emul[1:0]] | ara_req.emul[2];
   end
 
+
+`ifndef SYNTHESIS
+  // ---------------- Patch A5: dispatcher vl <= VLMAX check ----------------
+  int unsigned dbg_vlmax;
+  always_comb begin
+    dbg_vlmax = VLENB >> csr_vtype_q.vsew;
+    unique case (csr_vtype_q.vlmul)
+      LMUL_2: dbg_vlmax <<= 1;  LMUL_4: dbg_vlmax <<= 2;  LMUL_8: dbg_vlmax <<= 3;
+      LMUL_1_2: dbg_vlmax >>= 1; LMUL_1_4: dbg_vlmax >>= 2; LMUL_1_8: dbg_vlmax >>= 3;
+      default: ;
+    endcase
+  end
+  always_ff @(posedge clk_i)
+    if (rst_ni && !csr_vtype_q.vill && (32'(csr_vl_q) > dbg_vlmax))
+      $error("[DISP-A5] vl=%0d > VLMAX=%0d (vsew=%0d vlmul=%0d)",
+             csr_vl_q, dbg_vlmax, csr_vtype_q.vsew, csr_vtype_q.vlmul);
+`endif
+
 endmodule : ara_dispatcher

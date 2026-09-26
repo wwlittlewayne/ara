@@ -1685,4 +1685,61 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
+
+`ifndef SYNTHESIS
+  // ---------------- Patch A: MASKU vrf_pnt / overlap checks ----------------
+  initial if (VLEN < NrLanes*DataWidth)
+    $fatal(1, "[MASKU-CFG] VLEN=%0d < NrLanes*DataWidth=%0d: unsupported config", VLEN, NrLanes*DataWidth);
+
+  logic dbg_cmp_fire, dbg_commit_end, dbg_first_slice;
+  assign dbg_cmp_fire   = vinsn_issue_valid
+                       && (vinsn_issue.op inside {[VMFEQ:VMSBC]})
+                       && !result_queue_full
+                       && (&masku_operand_alu_valid)
+                       && ((&masku_operand_vd_valid) || !vinsn_issue.use_vd_op)
+                       && ((&masku_operand_m_valid) || vinsn_issue.vm || (vinsn_issue.op inside {[VMADC:VMSBC]}));
+  assign dbg_commit_end = vinsn_commit_valid
+                       && ((commit_cnt_d == '0) || (!(|result_queue_valid_q[result_queue_read_pnt_q]) && vcompress_issue_end_q));
+  assign dbg_first_slice = (issue_cnt_q == vinsn_issue.vl); // issue_cnt is loaded with vl
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni) begin
+      // A1: compressed bits must land inside the current VRF word
+      if (dbg_cmp_fire && ((32'(vrf_pnt_q) + 32'(delta_elm_q)) > NrLanes*DataWidth))
+        $error("[MASKU-A1] id=%0d op=%0d vl=%0d vrf_pnt=%0d delta=%0d > W=%0d (no word wrap)",
+               vinsn_issue.id, vinsn_issue.op, vinsn_issue.vl, vrf_pnt_q, delta_elm_q, NrLanes*DataWidth);
+      // A2: commit-end clears while a younger compare is already in flight
+      if (dbg_commit_end && vinsn_issue_valid && (vinsn_issue.id != vinsn_commit.id) &&
+          (vinsn_issue.op inside {[VMFEQ:VMSBC]}) && (dbg_cmp_fire || !dbg_first_slice))
+        $error("[MASKU-A2] commit-end of id=%0d clobbers issuing id=%0d (vrf_pnt=%0d ovc=%0d it=%0d fire=%0b)",
+               vinsn_commit.id, vinsn_issue.id, vrf_pnt_q, out_valid_cnt_q, iteration_cnt_q, dbg_cmp_fire);
+      // A3: first slice must start at bit 0
+      if (dbg_cmp_fire && dbg_first_slice && (vrf_pnt_q != '0))
+        $error("[MASKU-A3] id=%0d first slice with stale vrf_pnt=%0d", vinsn_issue.id, vrf_pnt_q);
+      // A4: first slice must start with clean output counters
+      if (dbg_cmp_fire && dbg_first_slice && ((out_valid_cnt_q != '0) || (iteration_cnt_q != '0)))
+        $error("[MASKU-A4] id=%0d first slice with stale ovc=%0d it=%0d",
+               vinsn_issue.id, out_valid_cnt_q, iteration_cnt_q);
+    end
+  end
+
+`ifdef MASKU_TRACE
+  always_ff @(posedge clk_i) if (rst_ni && dbg_cmp_fire)
+    $display("%0t MASKU cmpops id=%0d vrf_pnt=%0d alu_l0=%016h alu_l1=%016h cmp_seq=%032h",
+             $time, vinsn_issue.id, vrf_pnt_q, masku_operand_alu[0], masku_operand_alu[NrLanes-1],
+             alu_result_compressed_seq);
+  always_ff @(posedge clk_i) if (rst_ni && vinsn_issue_valid && (vinsn_issue.op inside {[VMSBF:VCOMPRESS]}) && (issue_cnt_d != issue_cnt_q))
+    $display("%0t MASKU xfire iss.id=%0d op=%0d vl=%0d sew=%0d vrf_pnt=%0d delta=%0d icnt=%0d ovc=%0d it=%0d",
+             $time, vinsn_issue.id, vinsn_issue.op, vinsn_issue.vl, vinsn_issue.vtype.vsew, vrf_pnt_q, delta_elm_q,
+             issue_cnt_q, out_valid_cnt_q, iteration_cnt_q);
+`endif
+`ifdef MASKU_TRACE
+  always_ff @(posedge clk_i) if (rst_ni && (dbg_cmp_fire || dbg_commit_end))
+    $display("%0t MASKU fire=%0b cend=%0b iss.id=%0d op=%0d vl=%0d sew=%0d vm=%0b vrf_pnt=%0d delta=%0d icnt=%0d ovc=%0d it=%0d cmt.id=%0d",
+             $time, dbg_cmp_fire, dbg_commit_end, vinsn_issue.id, vinsn_issue.op, vinsn_issue.vl,
+             vinsn_issue.vtype.vsew, vinsn_issue.vm, vrf_pnt_q, delta_elm_q, issue_cnt_q,
+             out_valid_cnt_q, iteration_cnt_q, vinsn_commit.id);
+`endif
+`endif
+
 endmodule : masku

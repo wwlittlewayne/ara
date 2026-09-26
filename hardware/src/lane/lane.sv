@@ -717,4 +717,18 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   if (NrLanes == 0)
     $error("[lane] Ara needs to have at least one lane.");
 
+
+`ifndef SYNTHESIS
+`ifdef MASKU_TRACE
+  // Debug-only: every VRF bank write in this lane
+  always_ff @(posedge clk_i) if (rst_ni)
+    for (int bk = 0; bk < NrVRFBanksPerLane; bk++)
+      if (vrf_req[bk] && vrf_wen[bk])
+        $display("%0t VRFW lane=%0d bank=%0d addr=%0h data=%016h be=%0h",
+                 $time, lane_id_i, bk, vrf_addr[bk], vrf_wdata[bk], vrf_be[bk]);
+      else if (vrf_req[bk])
+        $display("%0t VRFR lane=%0d bank=%0d addr=%0h opq=%0d", $time, lane_id_i, bk, vrf_addr[bk], vrf_tgt_opqueue[bk]);
+`endif
+`endif
+
 endmodule : lane
