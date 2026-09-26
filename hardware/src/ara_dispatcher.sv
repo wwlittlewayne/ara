@@ -3645,7 +3645,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         reshuffle_req_d &= {
           (insn.varith_type.rs1 != insn.varith_type.rs2) && (insn.varith_type.rs1 != insn.varith_type.rd),
           (insn.varith_type.rs2 != insn.varith_type.rd),
-          1'b1};
+          // Do not reshuffle vd if it aliases a source that is read with an EEW different
+          // from the new vd EEW (e.g., in-place narrowing vnsrl v2, v2): the reshuffle would
+          // destroy the source layout before it is read. Tail is agnostic in this case.
+          !((ara_req.use_vs2 && (insn.varith_type.rs2 == insn.varith_type.rd) && (ara_req.eew_vs2 != ara_req.vtype.vsew)) ||
+            (ara_req.use_vs1 && (insn.varith_type.rs1 == insn.varith_type.rd) && (ara_req.eew_vs1 != ara_req.vtype.vsew)))};
 
         // Prepare the information to reshuffle the vector registers during the next cycles
         // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
