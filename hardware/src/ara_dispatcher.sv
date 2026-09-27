@@ -1898,6 +1898,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   default: illegal_insn = 1'b1;
                 endcase
 
+                // RVV reductions read their scalar seed from a single register.
+                if (ara_req.op inside {[VREDSUM:VWREDSUM]}) lmul_vs1 = LMUL_1;
+
                 // Instructions with an integer LMUL have extra constraints on the registers they can
                 // access. These constraints can be different for the two source operands and the
                 // destination register.
